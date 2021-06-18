@@ -1,4 +1,5 @@
 import * as AuthSession from "expo-auth-session";
+import * as WebBrowser from "expo-web-browser";
 import jwtDecode from "jwt-decode";
 import * as React from "react";
 import { Alert, Button, Platform, StyleSheet, Text, View } from "react-native";
@@ -18,6 +19,8 @@ const authorizationEndpoint = "https://" + auth0Domain + "/authorize";
 
 const useProxy = Platform.select({ web: false, default: true });
 const redirectUri = AuthSession.makeRedirectUri({ useProxy });
+
+WebBrowser.maybeCompleteAuthSession();
 
 export default function App() {
   const [name, setName] = React.useState(null);
