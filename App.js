@@ -1,17 +1,20 @@
+// Note this implementation only works in the browser
+
+import React, { useEffect, useState } from "react";
 import * as AuthSession from "expo-auth-session";
-import * as WebBrowser from "expo-web-browser";
-import jwtDecode from "jwt-decode";
-import * as React from "react";
-import { Alert, Button, Platform, StyleSheet, Text, View } from "react-native";
+import {
+  Alert,
+  Button,
+  Platform,
+  StyleSheet,
+  Text,
+  View,
+  TextInput,
+} from "react-native";
 import Constants from "expo-constants";
 
-// You need to swap out the Auth0 client id and domain with the one from your Auth0 client.
-// In your Auth0 client, you need to also add a url to your authorized redirect urls.
-//
-// For this application, I added https://auth.expo.io/@arielweinberger/with-auth0 because I am
-// signed in as the 'arielweinberger' account on Expo and the name/slug for this app is 'with-auth0'.
-//
-// You can open this app in the Expo client and check your logs to find out your redirect URL.
+import { Auth0Provider } from "@auth0/auth0-react";
+import { useAuth0 } from "@auth0/auth0-react";
 
 const auth0ClientId = Constants.manifest.extra.auth0ClientId || "";
 const auth0Domain = Constants.manifest.extra.auth0Domain || "";
@@ -20,68 +23,57 @@ const authorizationEndpoint = "https://" + auth0Domain + "/authorize";
 const useProxy = Platform.select({ web: false, default: true });
 const redirectUri = AuthSession.makeRedirectUri({ useProxy });
 
-WebBrowser.maybeCompleteAuthSession();
-
-export default function App() {
+function AuthComponent() {
   const [name, setName] = React.useState(null);
+  const [email, setEmail] = React.useState(null);
+  const [text, onChangeText] = React.useState("Useless Text");
+  const { isLoading, isAuthenticated, error, user, loginWithRedirect, logout } =
+    useAuth0();
 
-  const [request, result, promptAsync] = AuthSession.useAuthRequest(
-    {
-      redirectUri,
-      clientId: auth0ClientId,
-      // id_token will return a JWT token
-      responseType: "id_token",
-      // retrieve the user's profile
-      scopes: ["openid", "profile"],
-      extraParams: {
-        // ideally, this will be a random value
-        nonce: "nonce",
-      },
-    },
-    { authorizationEndpoint }
-  );
-
-  // Retrieve the redirect URL, add this to the callback URL list
-  // of your Auth0 application.
-  console.log(`Redirect URL: ${redirectUri}`);
-
-  React.useEffect(() => {
-    if (result) {
-      if (result.error) {
-        Alert.alert(
-          "Authentication error",
-          result.params.error_description || "something went wrong"
-        );
-        return;
-      }
-      if (result.type === "success") {
-        // Retrieve the JWT token and decode it
-        const jwtToken = result.params.id_token;
-        const decoded = jwtDecode(jwtToken);
-
-        const { name } = decoded;
-        setName(name);
-      } else {
-        console.log("not error, not success");
-      }
-    }
-  }, [result]);
+  if (isLoading) {
+    return <Text>Loading...</Text>;
+  }
+  if (error) {
+    return <Text>Oops... {error.message}</Text>;
+  }
 
   return (
-    <View style={styles.container}>
-      {name ? (
+    <>
+      {user && user.name ? (
         <>
-          <Text style={styles.title}>You are logged in, {name}!</Text>
-          <Button title="Log out" onPress={() => setName(null)} />
+          <Text style={styles.title}>You are logged in, {user.name}!</Text>
+          <Button
+            title="Log out"
+            onPress={() => logout({ returnTo: redirectUri })}
+          />
         </>
       ) : (
-        <Button
-          disabled={!request}
-          title="Log in with Auth0"
-          onPress={() => promptAsync({ useProxy })}
-        />
+        <>
+          <TextInput
+            style={styles.input}
+            onChangeText={onChangeText}
+            value={text}
+          />
+          <Button
+            title="Log in with Auth0"
+            onPress={() => {
+              console.log("clicked login");
+              loginWithRedirect();
+            }}
+          />
+        </>
       )}
-    </View>
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <Auth0Provider domain={auth0Domain} clientId={auth0ClientId} redirectUri>
+      <View style={styles.container}>
+        <AuthComponent />
+      </View>
+    </Auth0Provider>
   );
 }
 
@@ -96,5 +88,10 @@ const styles = StyleSheet.create({
     fontSize: 20,
     textAlign: "center",
     marginTop: 40,
+  },
+  input: {
+    height: 40,
+    margin: 12,
+    borderWidth: 1,
   },
 });
