@@ -1,25 +1,22 @@
-// Note this implementation only works in the browser
-
-import React, { useEffect, useState } from "react";
+import React from "react";
+import "@expo/browser-polyfill";
 import auth0 from "auth0-js";
 import * as AuthSession from "expo-auth-session";
-import * as WebBrowser from "expo-web-browser";
+import Constants from "expo-constants";
+import jwtDecode from "jwt-decode";
 import {
-  Alert,
   Button,
   Platform,
   StyleSheet,
   Text,
-  View,
+  ScrollView,
   TextInput,
 } from "react-native";
-import Constants from "expo-constants";
-
-WebBrowser.maybeCompleteAuthSession();
 
 const auth0ClientId = Constants.manifest.extra.auth0ClientId || "";
 const auth0Domain = Constants.manifest.extra.auth0Domain || "";
-const authorizationEndpoint = "https://" + auth0Domain + "/authorize";
+const auth0ApiAudience = Constants.manifest.extra.auth0ApiAudience || "";
+const auth0Realm = Constants.manifest.extra.auth0Realm || "";
 
 const useProxy = Platform.select({ web: false, default: true });
 const redirectUri = AuthSession.makeRedirectUri({ useProxy });
@@ -27,133 +24,96 @@ const redirectUri = AuthSession.makeRedirectUri({ useProxy });
 const webAuth = new auth0.WebAuth({
   domain: auth0Domain,
   clientID: auth0ClientId,
-  scope: "openid profile email",
-  responseType: "token id_token",
+  audience: auth0ApiAudience,
   redirectUri,
+  scope: "openid profile email read:current_user update:current_user_metadata",
+  responseType: "token id_token",
 });
 
-export default function App() {
-  const [name, setName] = React.useState(null);
-  const [email, setEmail] = React.useState(null);
-  const [text, onChangeText] = React.useState("Useless Text");
-
-  webAuth.parseHash({ hash: window.location.hash }, function (err, authResult) {
-    if (err) {
-      return console.log(err);
-    }
-
-    webAuth.client.userInfo(authResult.accessToken, function (err, user) {
-      // Now you have the user's information
-      if (err) {
-        return console.log(err);
-      }
-      if (user && user.name) {
-        setName(user.name);
-      }
-    });
+const logout = (clearAppStateFn) => {
+  webAuth.logout({
+    clientID: auth0ClientId,
+    returnTo: redirectUri,
   });
+  clearAppStateFn();
+};
 
-  function onPasswordlessStart(enteredEmail) {
-    webAuth.passwordlessStart(
-      {
-        connection: "email",
-        send: "code",
-        email: enteredEmail,
-      },
-      function (err, res) {
-        if (err) {
-          console.error(err);
-        } else {
-          console.log(res);
-          setEmail(enteredEmail);
-          onChangeText("");
-        }
-        // handle errors or continue
+const login = (username, pass, setAppStateFn) => {
+  webAuth.client.login(
+    {
+      realm: auth0Realm,
+      username,
+      password: pass,
+    },
+    (err, authResult) => {
+      if (err) {
+        alert("Error", err.description);
+        return;
       }
-    );
-  }
-
-  function onPasswordlessVerify(enteredOTP) {
-    webAuth.passwordlessLogin(
-      {
-        connection: "email",
-        verificationCode: enteredOTP,
-        email,
-      },
-      function (err, res) {
-        if (err) {
-          console.error(err);
-        } else {
-          console.log(res);
-          webAuth.parseHash(
-            { hash: window.location.hash },
-            function (err, authResult) {
-              if (err) {
-                return console.log(err);
-              }
-
-              webAuth.client.userInfo(
-                authResult.accessToken,
-                function (err, user) {
-                  if (err) {
-                    return console.log(err);
-                  }
-                  // Now you have the user's information
-                  if (user && user.name) {
-                    setName(user.name);
-                  }
-                }
-              );
-            }
-          );
-        }
-        // handle errors or continue
+      if (authResult) {
+        console.log(authResult);
+        const jwtToken = authResult.idToken;
+        const decoded = jwtDecode(jwtToken);
+        setAppStateFn(decoded.name);
+        //window.origin = window.location.origin;
       }
-    );
-  }
+    }
+  );
+};
+
+export default function App() {
+  const [email, onEmailChange] = React.useState("");
+  const [password, onPasswordChange] = React.useState("");
+  const [name, setName] = React.useState(null);
 
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.wrapper}>
       {name ? (
         <>
           <Text style={styles.title}>You are logged in, {name}!</Text>
-          <Button title="Log out" onPress={() => setName(null)} />
-        </>
-      ) : email ? (
-        <>
-          <Text>You entered this! {email}</Text>
-          <Text>Please type OTP:</Text>
-          <TextInput
-            style={styles.input}
-            onChangeText={onChangeText}
-            value={text}
-          />
-          <Button title="Verify" onPress={() => onPasswordlessVerify(text)} />
+          <Button title="Log out" onPress={() => logout(() => setName(null))} />
         </>
       ) : (
         <>
-          <Text style={styles.title}>Enter your email: </Text>
+          <Text>Enter email and password</Text>
           <TextInput
             style={styles.input}
-            onChangeText={onChangeText}
-            value={text}
+            onChangeText={onEmailChange}
+            value={email}
+            placeholder="<email>"
+            autoCompleteType="email"
+            autoFocus={true}
+            autoCorrect={false}
+            keyboardType="email-address"
+          />
+          <TextInput
+            style={styles.input}
+            onChangeText={onPasswordChange}
+            value={password}
+            placeholder="<password>"
+            autoCompleteType="password"
+            secureTextEntry={true}
+            autoCorrect={false}
           />
           <Button
-            title="Email me OTP"
-            onPress={() => onPasswordlessStart(text)}
+            title="Login"
+            onPress={() => {
+              login(email, password, setName);
+            }}
           />
         </>
       )}
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  wrapper: { alignItems: "center", justifyContent: "center" },
+
   container: {
     flex: 1,
     backgroundColor: "#fff",
-    alignItems: "center",
-    justifyContent: "center",
+    paddingTop: 200,
   },
   title: {
     fontSize: 20,
@@ -164,5 +124,6 @@ const styles = StyleSheet.create({
     height: 40,
     margin: 12,
     borderWidth: 1,
+    minWidth: 200,
   },
 });
