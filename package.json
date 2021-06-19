@@ -8,6 +8,7 @@
     "eject": "expo eject"
   },
   "dependencies": {
+    "@expo/browser-polyfill": "^0.1.1",
     "auth0-js": "^9.16.2",
     "dotenv": "^10.0.0",
     "expo": "~41.0.1",
